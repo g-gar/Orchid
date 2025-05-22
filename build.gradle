@@ -1,0 +1,46 @@
+plugins {
+    id 'java' // Plugin para compilar código Java
+    id 'org.springframework.boot' version '3.4.5' // Versión estable de Spring Boot (verifica la última)
+    id 'io.spring.dependency-management' version '1.1.7' // Para gestionar las versiones de las dependencias de Spring
+    id("io.freefair.lombok") version "8.13.1"
+}
+
+group = 'com.ggar' // Cambia esto a tu grupo deseado
+version = '0.0.1-SNAPSHOT' // Versión inicial de tu aplicación
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Dependencia principal de Spring Boot, incluye auto-configuración, logging, etc.
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-autoconfigure'
+
+    // Dependencia para clases HTTP de Spring como HttpHeaders, MediaType, ResponseEntity, RestTemplate
+    // Necesaria para HttpTransportServiceImpl y MangaDexAuthService
+    implementation 'org.springframework:spring-web'
+
+    // Para parsear JSON (para la API de MangaDex)
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
+    // implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310' // Si necesitas manejar tipos de fecha/hora de Java 8+
+
+    // Para testing (opcional pero recomendado)
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    implementation 'org.yaml:snakeyaml:2.4'
+    implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml'
+}
+
+// tasks.withType(org.springframework.boot.gradle.plugin.SpringBootPlugin.CreateBootJar) {
+//     enabled = true // Asegura que se cree un JAR ejecutable
+// }
+
+tasks.withType(Test) {
+    useJUnitPlatform()
+}

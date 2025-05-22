@@ -1,0 +1,41 @@
+id: "SieveEratosthenes"
+description: "Generates a sieve of prime numbers"
+initialContextParameters: ["minInteger", "maxInteger"]
+stages:
+  - name: "GeneratePreCondition"
+    description: "As a precondition for the rest of stages we need the list of odd numbers between a given range"
+    actions:
+      - name: "CreateEmptyList"
+        type: "spel"
+        expression: "new java.util.ArrayList()"
+        returnToContextAs: "list"
+
+      - name: "PopulateNumbersBasedOnCondition"
+        type: "loop"
+        from: "#jobContext['minInteger']"
+        to: "#jobContext['maxInteger']"
+        iteratorVariable: "currentNumber"
+        conditionExpression: "#currentNumber <= #jobContext['maxInteger']"
+        incrementExpression: "#currentNumber + 1"
+        body:
+          - name: "AddNumberIfOdd"
+            type: "conditional"
+            condition: "#currentNumber == 2 || #currentNumber % 2 == 1"
+            actions:
+              - name: "AddOddNumberToList"
+                type: "spel"
+                expression: "#jobContext['list'].add(#currentNumber)"
+
+      - name: "FilterPrimes"  # Nombre de esta acción de bucle
+        type: "loop"         # Declara explícitamente que esta acción es un bucle
+        description: "Filters the list to keep only prime numbers by iterating and removing non-primes." # Descripción del bucle
+        collection: "#jobContext['list']"  # Propiedad del LoopAction
+        iteratorVariable: "currentPrimeCandidate" # Propiedad del LoopAction
+        body: # El LoopAction usa 'body' para sus acciones internas
+          - name: "CheckAndRemoveIfNotPrime" # Acción dentro del cuerpo del bucle
+            type: "conditional"
+            condition: "T(PrimeChecker).isNotPrime(#currentPrimeCandidate)"
+            actions: # La ConditionalAction usa 'actions' para sus acciones (mapeado a thenActions)
+              - name: "RemoveNonPrime"
+                type: "spel"
+                expression: "#jobContext['list'].remove(#currentPrimeCandidate)"
