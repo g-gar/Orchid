@@ -1,8 +1,0 @@
-id: "ExecuteJavaMethod"
-stages:
-  - name: "CallJavaMethod"
-    type: "javaMethod"
-    beanName: "com.example.myUtilityBean"
-    method: "processData"
-    args: [ "#jobContext['inputData']", "someLiteral" ]
-    returnToContextAs: "processedResult"

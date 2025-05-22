@@ -1,8 +1,0 @@
-id: "LSCommand"
-stages:
-  - name: "RunSystemCommand"
-    type: "command"
-    command: "ls -l"
-    args: [ "/tmp" ]
-    captureOutput: true
-    returnToContextAs: "commandOutput"
