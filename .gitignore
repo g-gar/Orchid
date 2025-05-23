@@ -2,4 +2,4 @@
 /.gradle
 /.idea
 **/build
-**/mangadl/parameters.yml
+**/jobs/**/parameters.yml

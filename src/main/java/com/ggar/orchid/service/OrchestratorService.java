@@ -88,8 +88,8 @@ public class OrchestratorService {
     }
 
     // additionalSpelVariablesForFirstAction es el #previousResult de la acción que precedió a esta lista.
-    public void executeActions(List<Action> actions, Map<String, Object> jobContext, ClassLoader jobSpecificClassLoader, ActionExecutionLineage lineage, Object initialPreviousResult) {
-        if (actions == null) return;
+    public Object executeActions(List<Action> actions, Map<String, Object> jobContext, ClassLoader jobSpecificClassLoader, ActionExecutionLineage lineage, Object initialPreviousResult) {
+        if (actions == null) return null;
         Object previousActionResult = initialPreviousResult; // Usar el resultado que vino de "afuera" de esta lista para la primera acción
         for (Action action : actions) {
             Map<String, Object> additionalSpelVariables = new HashMap<>();
@@ -97,6 +97,7 @@ public class OrchestratorService {
 
             previousActionResult = executeAction(action, jobContext, jobSpecificClassLoader, lineage, additionalSpelVariables);
         }
+        return previousActionResult;
     }
 
     // executeAction ahora devuelve el resultado de la acción (después de unboxing)

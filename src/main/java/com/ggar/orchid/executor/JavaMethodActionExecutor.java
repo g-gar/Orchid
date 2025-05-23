@@ -28,11 +28,8 @@ public class JavaMethodActionExecutor implements ActionExecutor {
     private final ApplicationContext applicationContext;
     private final SpelExpressionEvaluator spelEvaluator;
     private final I18nService i18n;
-
     public JavaMethodActionExecutor(ApplicationContext applicationContext, SpelExpressionEvaluator spelEvaluator, I18nService i18n) {
-        this.applicationContext = applicationContext;
-        this.spelEvaluator = spelEvaluator;
-        this.i18n = i18n;
+        this.applicationContext = applicationContext; this.spelEvaluator = spelEvaluator; this.i18n = i18n;
     }
 
     @Override
@@ -41,7 +38,6 @@ public class JavaMethodActionExecutor implements ActionExecutor {
         String targetIdentifier = javaMethodAction.getBeanName();
         String methodName = javaMethodAction.getMethod();
 
-        // CORRECCIÓN: Asegurar que targetIdentifier no sea nulo para construir logTargetName
         if (!StringUtils.hasText(targetIdentifier)) {
             log.error(i18n.getMessage("executor.javamethod.targetIdentifierMissing"));
             throw new IllegalArgumentException(i18n.getMessage("executor.javamethod.targetIdentifierMissing.runtime"));
@@ -52,7 +48,6 @@ public class JavaMethodActionExecutor implements ActionExecutor {
         Object targetInstance = null;
         Class<?> targetClass = null;
 
-        // 1. Try to resolve targetIdentifier as a key in jobContext
         if (jobContext.containsKey(targetIdentifier)) {
             targetInstance = jobContext.get(targetIdentifier);
             if (targetInstance != null) {
@@ -63,14 +58,12 @@ public class JavaMethodActionExecutor implements ActionExecutor {
             }
         }
 
-        // 2. If not found or null in context, try to resolve as a Spring bean
         if (targetInstance == null) {
             try {
                 targetInstance = applicationContext.getBean(targetIdentifier);
                 targetClass = targetInstance.getClass();
                 log.debug(i18n.getMessage("executor.javamethod.resolvedAsBean", targetIdentifier));
             } catch (NoSuchBeanDefinitionException nsbe) {
-                // 3. If not a bean, try to load and instantiate as a FQCN from jobSpecificClassLoader
                 if (jobSpecificClassLoader != null) {
                     log.debug(i18n.getMessage("executor.javamethod.notABeanOrContextKey", targetIdentifier));
                     try {
@@ -139,30 +132,33 @@ public class JavaMethodActionExecutor implements ActionExecutor {
         Object[] processedMethodArgs;
         Method methodToExecute;
 
-        // Evaluate YAML args first
-        int numYamlArgs = (yamlMethodArgs == null) ? 0 : yamlMethodArgs.size();
-        Object[] evaluatedYamlArgs = new Object[numYamlArgs];
-        if (yamlMethodArgs != null) {
-            for (int i = 0; i < numYamlArgs; i++) {
-                evaluatedYamlArgs[i] = spelEvaluator.evaluate(String.valueOf(yamlMethodArgs.get(i)).trim(), jobContext, additionalSpelVariables, jobSpecificClassLoader);
+        Object[] evaluatedYamlArgsForMethod = null;
+        if (yamlMethodArgs != null && !yamlMethodArgs.isEmpty()) {
+            evaluatedYamlArgsForMethod = new Object[yamlMethodArgs.size()];
+            for (int i = 0; i < yamlMethodArgs.size(); i++) {
+                evaluatedYamlArgsForMethod[i] = spelEvaluator.evaluate(String.valueOf(yamlMethodArgs.get(i)).trim(), jobContext, additionalSpelVariables, jobSpecificClassLoader);
             }
         }
 
-        methodToExecute = findBestMatchingMethod(targetClass, methodName, evaluatedYamlArgs, jobContext, jobSpecificClassLoader, additionalSpelVariables);
+        methodToExecute = findBestMatchingMethod(targetClass, methodName, evaluatedYamlArgsForMethod, jobContext, jobSpecificClassLoader, additionalSpelVariables);
 
         if (methodToExecute == null) {
             log.error(i18n.getMessage("executor.javamethod.methodNotFoundDetailed", methodName,
-                    numYamlArgs + " args (types based on SpEL evaluation)", targetIdentifier));
+                    (yamlMethodArgs != null ? yamlMethodArgs.size() : "0") + " args", targetIdentifier));
             throw new RuntimeException(i18n.getMessage("executor.javamethod.methodNotFound.runtime", methodName));
         }
 
         Class<?>[] expectedMethodParamTypes = methodToExecute.getParameterTypes();
-        processedMethodArgs = new Object[numYamlArgs];
-        for (int i = 0; i < numYamlArgs; i++) {
-            // Use the already evaluated SpEL result for coercion
-            processedMethodArgs[i] = coerceArgument(evaluatedYamlArgs[i], expectedMethodParamTypes[i], "method argument " + i, jobContext, jobSpecificClassLoader, additionalSpelVariables);
-            log.trace(i18n.getMessage("executor.javamethod.argProcessed", i, processedMethodArgs[i],
-                    (processedMethodArgs[i] != null ? processedMethodArgs[i].getClass().getSimpleName() : "null")));
+        if (evaluatedYamlArgsForMethod == null || evaluatedYamlArgsForMethod.length == 0) {
+            processedMethodArgs = new Object[0];
+        } else {
+            processedMethodArgs = new Object[evaluatedYamlArgsForMethod.length];
+            for (int i = 0; i < evaluatedYamlArgsForMethod.length; i++) {
+                Class<?> expectedParamType = (i < expectedMethodParamTypes.length) ? expectedMethodParamTypes[i] : Object.class;
+                processedMethodArgs[i] = coerceArgument(evaluatedYamlArgsForMethod[i], expectedParamType, "method argument " + i, jobContext, jobSpecificClassLoader, additionalSpelVariables);
+                log.trace(i18n.getMessage("executor.javamethod.argProcessed", i, processedMethodArgs[i],
+                        (processedMethodArgs[i] != null ? processedMethodArgs[i].getClass().getSimpleName() : "null")));
+            }
         }
 
         try {
@@ -175,25 +171,28 @@ public class JavaMethodActionExecutor implements ActionExecutor {
         }
     }
 
-    private Constructor<?> findBestMatchingConstructor(Class<?> targetClass, List<Object> yamlConstructorArgConfigs, Map<String, Object> jobContext, ClassLoader jobSpecificClassLoader, Map<String, Object> additionalSpelVariables) {
-        Object[] evaluatedArgs = new Object[yamlConstructorArgConfigs.size()];
-        for (int i = 0; i < yamlConstructorArgConfigs.size(); i++) {
-            evaluatedArgs[i] = spelEvaluator.evaluate(String.valueOf(yamlConstructorArgConfigs.get(i)).trim(), jobContext, additionalSpelVariables, jobSpecificClassLoader);
+    private Constructor<?> findBestMatchingConstructor(Class<?> targetClass, List<Object> yamlArgConfigsOrAlreadyEvaluatedValues, Map<String, Object> jobContext, ClassLoader jobSpecificClassLoader, Map<String, Object> additionalSpelVariables) {
+        // This method now assumes yamlArgConfigsOrAlreadyEvaluatedValues could be SpEL strings OR already evaluated values if called from instantiateComplexTypeFromListValues
+        Object[] evaluatedArgs = new Object[yamlArgConfigsOrAlreadyEvaluatedValues.size()];
+        for (int i = 0; i < yamlArgConfigsOrAlreadyEvaluatedValues.size(); i++) {
+            Object configOrValue = yamlArgConfigsOrAlreadyEvaluatedValues.get(i);
+            if (configOrValue instanceof String && String.valueOf(configOrValue).trim().startsWith("#")) { // Assume it's a SpEL string
+                evaluatedArgs[i] = spelEvaluator.evaluate(String.valueOf(configOrValue).trim(), jobContext, additionalSpelVariables, jobSpecificClassLoader);
+            } else { // Assume it's an already evaluated value (e.g., from a List literal in SpEL)
+                evaluatedArgs[i] = configOrValue;
+            }
         }
         return findConstructorForEvaluatedArgs(targetClass, Arrays.asList(evaluatedArgs), jobContext, jobSpecificClassLoader, additionalSpelVariables);
     }
 
     private Object instantiateComplexTypeFromListValues(Class<?> typeToInstantiate, List<?> constructorArgValuesFromSpelList, Map<String, Object> jobContext, ClassLoader jobSpecificClassLoader, Map<String, Object> additionalSpelVariables)
             throws NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException {
-
         log.debug(i18n.getMessage("executor.javamethod.instantiatingComplexArg", typeToInstantiate.getName(), constructorArgValuesFromSpelList));
         Constructor<?> constructor = findConstructorForEvaluatedArgs(typeToInstantiate, constructorArgValuesFromSpelList, jobContext, jobSpecificClassLoader, additionalSpelVariables);
-
         if (constructor == null) {
             log.error(i18n.getMessage("executor.javamethod.constructorNotFoundForArg", ClassUtils.getShortName(typeToInstantiate), constructorArgValuesFromSpelList));
             throw new NoSuchMethodException("No suitable constructor found for " + typeToInstantiate.getName() + " with args " + constructorArgValuesFromSpelList);
         }
-
         Class<?>[] expectedConstructorParamTypes = constructor.getParameterTypes();
         Object[] finalConstructorArgs = new Object[constructorArgValuesFromSpelList.size()];
         for (int i = 0; i < constructorArgValuesFromSpelList.size(); i++) {
@@ -202,7 +201,6 @@ public class JavaMethodActionExecutor implements ActionExecutor {
                     "nested constructor argument " + i + " for " + typeToInstantiate.getSimpleName(),
                     jobContext, jobSpecificClassLoader, additionalSpelVariables);
         }
-
         constructor.setAccessible(true);
         Object instance = constructor.newInstance(finalConstructorArgs);
         log.debug(i18n.getMessage("executor.javamethod.constructorArgSuccess", ClassUtils.getShortName(typeToInstantiate), Arrays.toString(finalConstructorArgs)));
@@ -210,25 +208,20 @@ public class JavaMethodActionExecutor implements ActionExecutor {
     }
 
     private Constructor<?> findConstructorForEvaluatedArgs(Class<?> targetClass, List<?> evaluatedArgsList, Map<String, Object> jobContext, ClassLoader jobSpecificClassLoader, Map<String, Object> additionalSpelVariables) {
-        Object[] evaluatedArgs = evaluatedArgsList.toArray();
+        Object[] evaluatedArgs = evaluatedArgsList.toArray(); // These are actual values, not SpEL strings
         Constructor<?>[] candidates = targetClass.getDeclaredConstructors();
         for (Constructor<?> candidate : candidates) {
             if (candidate.getParameterCount() == evaluatedArgs.length) {
                 Class<?>[] candidateParamTypes = candidate.getParameterTypes();
                 boolean match = true;
-                Object[] coercedArgsForThisCandidate = new Object[evaluatedArgs.length]; // To check if coercion is possible
+                Object[] coercedArgsForThisCandidate = new Object[evaluatedArgs.length];
                 for (int i = 0; i < evaluatedArgs.length; i++) {
                     coercedArgsForThisCandidate[i] = coerceArgument(evaluatedArgs[i], candidateParamTypes[i], "constructor arg " + i, jobContext, jobSpecificClassLoader, additionalSpelVariables);
                     if (!isAssignable(candidateParamTypes[i], coercedArgsForThisCandidate[i] != null ? coercedArgsForThisCandidate[i].getClass() : null)) {
-                        match = false;
-                        break;
+                        match = false; break;
                     }
                 }
-                if (match) {
-                    // If a match is found, the actual coercion happens when the caller prepares arguments.
-                    // Here we just confirm a match is possible.
-                    return candidate;
-                }
+                if (match) return candidate;
             }
         }
         return null;
@@ -241,7 +234,7 @@ public class JavaMethodActionExecutor implements ActionExecutor {
                 .collect(Collectors.toList());
 
         if (candidateMethods.isEmpty()) return null;
-        if (candidateMethods.size() == 1 && numArgs == 0) return candidateMethods.get(0); // Simple case: no args, one method
+        if (candidateMethods.size() == 1 && numArgs == 0) return candidateMethods.get(0);
 
         for (Method candidate : candidateMethods) {
             Class<?>[] candidateParamTypes = candidate.getParameterTypes();
@@ -249,8 +242,7 @@ public class JavaMethodActionExecutor implements ActionExecutor {
             for (int i = 0; i < numArgs; i++) {
                 Object coercedArg = coerceArgument(evaluatedArgs[i], candidateParamTypes[i], "method argument " + i, jobContext, jobSpecificClassLoader, additionalSpelVariables);
                 if (!isAssignable(candidateParamTypes[i], coercedArg != null ? coercedArg.getClass() : null)) {
-                    match = false;
-                    break;
+                    match = false; break;
                 }
             }
             if (match) return candidate;
@@ -263,83 +255,67 @@ public class JavaMethodActionExecutor implements ActionExecutor {
         return null;
     }
 
-    // Corrected isAssignable
     private boolean isAssignable(Class<?> targetType, Class<?> sourceType) {
-        if (targetType == null) return false; // Cannot assign to a null type
-        if (sourceType == null) return !targetType.isPrimitive(); // null can be assigned to any non-primitive reference type
+        if (targetType == null) return false;
+        if (sourceType == null) return !targetType.isPrimitive();
+        if (targetType.isPrimitive() && sourceType == null) return false;
 
-        // Handle primitive vs wrapper assignability
-        Class<?> resolvedTargetType = ClassUtils.isPrimitiveWrapper(targetType) ? ClassUtils.resolvePrimitiveClassName(targetType.getName()) : targetType;
-        Class<?> resolvedSourceType = ClassUtils.isPrimitiveWrapper(sourceType) ? ClassUtils.resolvePrimitiveClassName(sourceType.getName()) : sourceType;
+        Class<?> resolvedTargetType = targetType.isPrimitive() ? ClassUtils.resolvePrimitiveIfNecessary(targetType) : targetType;
+        Class<?> resolvedSourceType = ClassUtils.isPrimitiveWrapper(sourceType) ? ClassUtils.resolvePrimitiveIfNecessary(sourceType) : sourceType;
 
-        if (resolvedTargetType == null) resolvedTargetType = targetType; // If not a wrapper, use original
-        if (resolvedSourceType == null) resolvedSourceType = sourceType; // If not a wrapper, use original
+        if (resolvedTargetType == null) resolvedTargetType = targetType;
+        if (resolvedSourceType == null) resolvedSourceType = sourceType;
 
         if (resolvedTargetType.isPrimitive() && resolvedSourceType.isPrimitive()) {
             if (resolvedTargetType == resolvedSourceType) return true;
-            // Standard widening primitive conversions
             if (resolvedTargetType == double.class && (resolvedSourceType == float.class || resolvedSourceType == long.class || resolvedSourceType == int.class || resolvedSourceType == short.class || resolvedSourceType == byte.class || resolvedSourceType == char.class)) return true;
             if (resolvedTargetType == float.class && (resolvedSourceType == long.class || resolvedSourceType == int.class || resolvedSourceType == short.class || resolvedSourceType == byte.class || resolvedSourceType == char.class)) return true;
             if (resolvedTargetType == long.class && (resolvedSourceType == int.class || resolvedSourceType == short.class || resolvedSourceType == byte.class || resolvedSourceType == char.class)) return true;
             if (resolvedTargetType == int.class && (resolvedSourceType == short.class || resolvedSourceType == byte.class || resolvedSourceType == char.class)) return true;
             if (resolvedTargetType == short.class && (resolvedSourceType == byte.class)) return true;
-            return false; // No other implicit primitive widening
+            return false;
         }
         return ClassUtils.isAssignable(targetType, sourceType);
     }
 
     private Object coerceArgument(Object argValue, Class<?> expectedType, String argContextName, Map<String, Object> jobContext, ClassLoader jobSpecificClassLoader, Map<String, Object> additionalSpelVariables) {
         if (argValue == null) {
-            return expectedType.isPrimitive() ? null : null; // Let reflection throw error for null on primitive later if this is null
+            return expectedType.isPrimitive() ? null : null;
         }
-
-        // If already assignable, no explicit coercion needed beyond what reflection might do
+        if (expectedType.isInstance(argValue)) return argValue;
         if (isAssignable(expectedType, argValue.getClass())) {
-            // Special case for Number to specific number types to ensure correct instance for reflection
-            if (expectedType == Long.class || expectedType == long.class) {
-                if (argValue instanceof Number) return ((Number) argValue).longValue();
-            } else if (expectedType == Integer.class || expectedType == int.class) {
-                if (argValue instanceof Number) {
-                    long longVal = ((Number) argValue).longValue();
-                    if (longVal >= Integer.MIN_VALUE && longVal <= Integer.MAX_VALUE) return (int) longVal;
-                }
-            } else if (expectedType == Double.class || expectedType == double.class) {
-                if (argValue instanceof Number) return ((Number) argValue).doubleValue();
-            } else if (expectedType == Float.class || expectedType == float.class) {
-                if (argValue instanceof Number) return ((Number) argValue).floatValue();
+            if ((expectedType == Long.class || expectedType == long.class) && argValue instanceof Integer) return ((Number) argValue).longValue();
+            if ((expectedType == Integer.class || expectedType == int.class) && argValue instanceof Long) {
+                long longVal = (Long) argValue;
+                if (longVal >= Integer.MIN_VALUE && longVal <= Integer.MAX_VALUE) return (int) longVal;
             }
-            // If directly assignable and not one of the specific numeric cases above, return as is
             return argValue;
         }
 
         log.debug(i18n.getMessage("executor.javamethod.attemptingCoercion", argContextName, argValue.getClass().getSimpleName(), expectedType.getSimpleName()));
 
-        // Specific coercions from Number
-        if (argValue instanceof Number numArgValue) {
-            if (expectedType == Long.class || expectedType == long.class) {
-                log.debug(i18n.getMessage("executor.javamethod.coercingNumberToLong", argValue, expectedType.getSimpleName()));
-                return numArgValue.longValue();
-            }
-            if (expectedType == Integer.class || expectedType == int.class) {
-                long longVal = numArgValue.longValue();
-                if (longVal >= Integer.MIN_VALUE && longVal <= Integer.MAX_VALUE) {
-                    log.debug(i18n.getMessage("executor.javamethod.coercingNumberToInteger", argValue, expectedType.getSimpleName()));
-                    return (int) longVal;
-                } else {
-                    log.warn(i18n.getMessage("executor.javamethod.coercionNumberToIntegerLoss", argValue, expectedType.getSimpleName()));
-                }
-            }
-            if (expectedType == Double.class || expectedType == double.class) {
-                log.debug(i18n.getMessage("executor.javamethod.coercingNumberToDouble", argValue, expectedType.getSimpleName()));
-                return numArgValue.doubleValue();
-            }
-            if (expectedType == Float.class || expectedType == float.class) {
-                log.debug(i18n.getMessage("executor.javamethod.coercingNumberToFloat", argValue, expectedType.getSimpleName()));
-                return numArgValue.floatValue();
+        if ((expectedType == Long.class || expectedType == long.class) && argValue instanceof Number) {
+            log.debug(i18n.getMessage("executor.javamethod.coercingNumberToLong", argValue, expectedType.getSimpleName()));
+            return ((Number) argValue).longValue();
+        }
+        if ((expectedType == Integer.class || expectedType == int.class) && argValue instanceof Number) {
+            long longVal = ((Number) argValue).longValue();
+            if (longVal >= Integer.MIN_VALUE && longVal <= Integer.MAX_VALUE) {
+                log.debug(i18n.getMessage("executor.javamethod.coercingNumberToInteger", argValue, expectedType.getSimpleName()));
+                return (int) longVal;
+            } else {
+                log.warn(i18n.getMessage("executor.javamethod.coercionNumberToIntegerLoss", argValue, expectedType.getSimpleName()));
             }
         }
+        if ((expectedType == Double.class || expectedType == double.class) && argValue instanceof Number) {
+            log.debug(i18n.getMessage("executor.javamethod.coercingNumberToDouble", argValue, expectedType.getSimpleName()));
+            return ((Number) argValue).doubleValue();
+        }
+        if ((expectedType == Float.class || expectedType == float.class) && argValue instanceof Number) {
+            log.debug(i18n.getMessage("executor.javamethod.coercingNumberToFloat", argValue, expectedType.getSimpleName()));
+            return ((Number) argValue).floatValue();
+        }
 
-        // Coercions from String
         if (argValue instanceof String strValue) {
             try {
                 if (expectedType == Long.class || expectedType == long.class) return Long.parseLong(strValue);
@@ -352,15 +328,9 @@ public class JavaMethodActionExecutor implements ActionExecutor {
             }
         }
 
-        // Recursive instantiation for complex types if argValue is a List from SpEL
-        if (argValue instanceof List &&
-                !Collection.class.isAssignableFrom(expectedType) &&
-                !expectedType.isArray() &&
-                !expectedType.isInterface() &&
-                !expectedType.isEnum() &&
-                !Modifier.isAbstract(expectedType.getModifiers()) &&
-                !ClassUtils.isPrimitiveOrWrapper(expectedType) &&
-                expectedType != String.class) {
+        if (argValue instanceof List && !Collection.class.isAssignableFrom(expectedType) && !expectedType.isArray() &&
+                !expectedType.isInterface() && !expectedType.isEnum() && !Modifier.isAbstract(expectedType.getModifiers()) &&
+                !ClassUtils.isPrimitiveOrWrapper(expectedType) && expectedType != String.class) {
             try {
                 log.debug(i18n.getMessage("executor.javamethod.attemptingRecursiveConstructorArg", ClassUtils.getShortName(expectedType), argValue));
                 return instantiateComplexTypeFromListValues(expectedType, (List<?>) argValue, jobContext, jobSpecificClassLoader, additionalSpelVariables);
