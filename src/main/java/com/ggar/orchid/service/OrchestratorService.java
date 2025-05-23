@@ -152,6 +152,6 @@ public class OrchestratorService {
             // El valor de la acción fallida será null para la siguiente acción
             valueToStoreOrUseInSpel = null;
         }
-        return valueToStoreOrUseInSpel; // Devolver el valor para que executeActions lo use como previousResult
+        return valueToStoreOrUseInSpel;
     }
 }
