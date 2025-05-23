@@ -15,22 +15,24 @@ import java.util.Map;
 import java.util.Optional;
 
 public class CommandActionExecutor implements ActionExecutor {
+    // ... (constructor igual)
     private static final Logger log = LoggerFactory.getLogger(CommandActionExecutor.class);
     private final SpelExpressionEvaluator spelEvaluator;
     private final I18nService i18n;
     public CommandActionExecutor(SpelExpressionEvaluator spelEvaluator, I18nService i18n) { this.spelEvaluator = spelEvaluator; this.i18n = i18n; }
 
     @Override
-    public Object execute(Action action, Map<String, Object> jobContext, OrchestratorService orchestratorService, ClassLoader jobSpecificClassLoader, ActionExecutionLineage lineage) {
+    public Object execute(Action action, Map<String, Object> jobContext, OrchestratorService orchestratorService, ClassLoader jobSpecificClassLoader, ActionExecutionLineage lineage, Map<String, Object> additionalSpelVariables) {
         com.ggar.orchid.model.CommandAction commandAction = (com.ggar.orchid.model.CommandAction) action;
         String commandName = Optional.ofNullable(commandAction.getName()).orElse(commandAction.getCommand());
-        log.debug(i18n.getMessage("executor.command.executing", commandName, commandAction.getCommand())); 
+        log.debug(i18n.getMessage("executor.command.executing", commandName, commandAction.getCommand()));
         List<String> commandParts = new java.util.ArrayList<>();
         commandParts.add(commandAction.getCommand());
         if (commandAction.getArgs() != null) {
             for (String arg : commandAction.getArgs()) {
                 try {
-                    Object evaluatedArg = spelEvaluator.evaluate(arg, jobContext, null, jobSpecificClassLoader);
+                    // Usar additionalSpelVariables para que #previousResult esté disponible en los args del comando
+                    Object evaluatedArg = spelEvaluator.evaluate(arg, jobContext, additionalSpelVariables, jobSpecificClassLoader);
                     commandParts.add(String.valueOf(evaluatedArg));
                 } catch (Exception e) {
                     log.warn(i18n.getMessage("executor.command.argEvaluationError", arg, e.getMessage())); commandParts.add(arg);
@@ -38,6 +40,7 @@ public class CommandActionExecutor implements ActionExecutor {
             }
         }
         log.debug(i18n.getMessage("executor.command.fullCommand", commandParts));
+        // ... (resto de la ejecución del comando) ...
         try {
             ProcessBuilder pb = new ProcessBuilder(commandParts);
             pb.redirectErrorStream(true); Process process = pb.start(); StringBuilder output = new StringBuilder();

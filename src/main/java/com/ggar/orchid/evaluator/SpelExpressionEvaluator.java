@@ -14,20 +14,13 @@ import java.util.Map;
 @Component
 public class SpelExpressionEvaluator {
     private static final Logger log = LoggerFactory.getLogger(SpelExpressionEvaluator.class);
-    private final SpelExpressionParser spelParser;
-    private final I18nService i18n; 
+    private final SpelExpressionParser spelParser = new SpelExpressionParser();
+    private final I18nService i18n;
+    @Autowired public SpelExpressionEvaluator(I18nService i18n) { this.i18n = i18n; }
 
-    @Autowired 
-    public SpelExpressionEvaluator(I18nService i18n) {
-        this.spelParser = new SpelExpressionParser();
-        this.i18n = i18n;
-    }
-
-    public Object evaluate(String expression, Map<String, Object> contextMap,
-                           Map<String, Object> additionalVariables, ClassLoader jobSpecificClassLoader) {
+    public Object evaluate(String expression, Map<String, Object> contextMap, Map<String, Object> additionalVariables, ClassLoader jobSpecificClassLoader) {
         if (expression == null || expression.trim().isEmpty()) {
-            log.trace(i18n.getMessage("spel.evaluator.emptyExpression"));
-            return null;
+            log.trace(i18n.getMessage("spel.evaluator.emptyExpression")); return null;
         }
         StandardEvaluationContext evalContext = new StandardEvaluationContext();
         evalContext.setVariable("jobContext", contextMap);
@@ -37,7 +30,10 @@ public class SpelExpressionEvaluator {
                 else log.warn(i18n.getMessage("spel.evaluator.reservedKeyWarning", key));
             });
         }
-        if (additionalVariables != null) additionalVariables.forEach(evalContext::setVariable);
+        // Add additional variables, these can include #previousResult or #actionResult
+        if (additionalVariables != null) {
+            additionalVariables.forEach(evalContext::setVariable);
+        }
 
         ClassLoader originalContextClassLoader = Thread.currentThread().getContextClassLoader();
         try {
@@ -47,7 +43,6 @@ public class SpelExpressionEvaluator {
             } else {
                 log.trace(i18n.getMessage("spel.evaluator.tclDefault", originalContextClassLoader));
             }
-            log.trace(i18n.getMessage("spel.evaluator.evaluating", expression, evalContext.getRootObject(), contextMap));
             Expression expr = spelParser.parseExpression(expression);
             return expr.getValue(evalContext);
         } catch (Exception e) {
@@ -59,32 +54,28 @@ public class SpelExpressionEvaluator {
         }
     }
 
-    public <T> T evaluate(String expression, Map<String, Object> contextMap,
-                          Map<String, Object> additionalVariables, Class<T> expectedType,
-                          ClassLoader jobSpecificClassLoader) {
+    public <T> T evaluate(String expression, Map<String, Object> contextMap, Map<String, Object> additionalVariables, Class<T> expectedType, ClassLoader jobSpecificClassLoader) {
         Object value = evaluate(expression, contextMap, additionalVariables, jobSpecificClassLoader);
         if (value == null) {
             if (expectedType == Boolean.class) {
-                log.trace(i18n.getMessage("spel.evaluator.nullToBooleanFalse", expression));
-                return expectedType.cast(Boolean.FALSE);
+                log.trace(i18n.getMessage("spel.evaluator.nullToBooleanFalse", expression)); return expectedType.cast(Boolean.FALSE);
             }
-            log.trace(i18n.getMessage("spel.evaluator.nullForExpectedType", expression, expectedType.getSimpleName()));
-            return null;
+            log.trace(i18n.getMessage("spel.evaluator.nullForExpectedType", expression, expectedType.getSimpleName())); return null;
         }
         if (expectedType.isInstance(value)) return expectedType.cast(value);
         if (expectedType == Boolean.class && value instanceof Number) return expectedType.cast(((Number) value).intValue() != 0);
         if (expectedType == Boolean.class && value instanceof String) return expectedType.cast(Boolean.parseBoolean((String)value));
         if (expectedType == String.class) return expectedType.cast(String.valueOf(value));
         if (Number.class.isAssignableFrom(expectedType)) {
-            if (value instanceof Number) {
-                if (expectedType == Long.class) return expectedType.cast(((Number) value).longValue());
-                if (expectedType == Integer.class) return expectedType.cast(((Number) value).intValue());
-                if (expectedType == Double.class) return expectedType.cast(((Number) value).doubleValue());
-            } else if (value instanceof String) {
+            if (value instanceof Number numValue) {
+                if (expectedType == Long.class || expectedType == long.class) return expectedType.cast(numValue.longValue());
+                if (expectedType == Integer.class || expectedType == int.class) return expectedType.cast(numValue.intValue());
+                if (expectedType == Double.class || expectedType == double.class) return expectedType.cast(numValue.doubleValue());
+            } else if (value instanceof String strValue) {
                 try {
-                    if (expectedType == Long.class) return expectedType.cast(Long.parseLong((String)value));
-                    if (expectedType == Integer.class) return expectedType.cast(Integer.parseInt((String)value));
-                    if (expectedType == Double.class) return expectedType.cast(Double.parseDouble((String)value));
+                    if (expectedType == Long.class || expectedType == long.class) return expectedType.cast(Long.parseLong(strValue));
+                    if (expectedType == Integer.class || expectedType == int.class) return expectedType.cast(Integer.parseInt(strValue));
+                    if (expectedType == Double.class || expectedType == double.class) return expectedType.cast(Double.parseDouble(strValue));
                 } catch (NumberFormatException nfe) {
                     log.error(i18n.getMessage("spel.evaluator.stringToNumberConversionError", value, expectedType.getSimpleName(), nfe.getMessage()));
                     throw new ClassCastException(i18n.getMessage("spel.evaluator.stringToNumberConversionError.runtime", value, expectedType.getName(), nfe.getMessage()));

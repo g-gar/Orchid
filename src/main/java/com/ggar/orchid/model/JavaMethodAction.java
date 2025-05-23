@@ -12,5 +12,6 @@ import java.util.List;
 public class JavaMethodAction extends Action {
     private String beanName;
     private String method;
-    private List<Object> args;
+    private List<Object> constructorArgs; // NUEVO CAMPO para argumentos del constructor
+    private List<Object> args; // Argumentos para el método
 }

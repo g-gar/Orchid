@@ -1,0 +1,71 @@
+id: MangaDL
+description: Download mangas from mangadex and/or batoto
+initialContextParameters:
+  - http.delayBetweenRequests
+  - mangadex.tokenUrl
+  - mangadex.grantType
+  - mangadex.clientId
+  - mangadex.clientSecret
+  - mangadex.username
+  - mangadex.password
+  - mangadex.apiBaseUrl
+  - mangadex.coverArtBaseUrl
+  - mangadex.mangaId
+  - mangadex.languages
+  - mangadex.startChapter
+  - mangadex.endChapter
+stages:
+  - name: Fetch manga detail and chapters
+    actions:
+      - name: InitializeMangaDexClientInstance
+        type: javaMethod
+        beanName: com.ggar.orchid.plugins.mangadex.MangaDexClient
+        constructorArgs:
+          - "#jobContext['mangadex.apiBaseUrl']"
+          - "#jobContext['mangadex.coverArtBaseUrl']"
+          - "#jobContext['mangadex.tokenUrl']"
+          - "#jobContext['mangadex.clientId']"
+          - "#jobContext['mangadex.clientSecret']"
+          - "#jobContext['mangadex.grantType']"
+          - "#jobContext['mangadex.username']"
+          - "#jobContext['mangadex.password']"
+          - "#jobContext['http.delayBetweenRequests']"
+        returnToContextAs: "myMangaDexClient"
+
+      - name: FetchMangaDetails
+        type: javaMethod
+        beanName: "myMangaDexClient"
+        method: "fetchMangaDetails"
+        args:
+          - "#jobContext['mangadex.mangaId']"
+        returnToContextAs: "mangaDetailsObject"
+
+  - name: FetchMangaChapters
+    actions:
+    - name: CreateChapterRange
+      type: javaMethod
+      beanName: com.ggar.orchid.plugins.mangadex.dto.ChapterRange
+      constructorArgs:
+        - "#jobContext['mangadex.startChapter']"
+        - "#jobContext['mangadex.endChapter']"
+    - name: CreateChapterQuery
+      type: javaMethod
+      beanName: com.ggar.orchid.plugins.mangadex.dto.ChapterQuery
+      constructorArgs:
+        - "#jobContext['languages']"
+        - null
+        - 100
+        - null
+        - "#jobContext['previousResult']"
+    - name: FetchMangaChapters
+      type: javaMethod
+      beanName: "myMangaDexClient"
+      method: "fetchChapterList"
+      args:
+        - "#jobContext['mangadex.mangaId']"
+        - "#jobContext['previousResult']"
+      returnToContextAs: "chaptersListResult"
+
+    - name: AssignChaptersToDetails
+      type: spel
+      expression: "#mangaDetailsObject.setChapters(#chaptersListResult)"

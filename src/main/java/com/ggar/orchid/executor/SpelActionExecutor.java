@@ -11,19 +11,16 @@ import org.slf4j.LoggerFactory;
 import java.util.Map;
 
 public class SpelActionExecutor implements ActionExecutor {
+    // ... (constructor igual)
     private static final Logger log = LoggerFactory.getLogger(SpelActionExecutor.class);
     private final SpelExpressionEvaluator spelEvaluator;
     private final I18nService i18n;
-
-    public SpelActionExecutor(SpelExpressionEvaluator spelEvaluator, I18nService i18n) {
-        this.spelEvaluator = spelEvaluator;
-        this.i18n = i18n;
-    }
+    public SpelActionExecutor(SpelExpressionEvaluator spelEvaluator, I18nService i18n) { this.spelEvaluator = spelEvaluator; this.i18n = i18n; }
 
     @Override
-    public Object execute(Action action, Map<String, Object> jobContext, OrchestratorService orchestratorService, ClassLoader jobSpecificClassLoader, ActionExecutionLineage lineage) {
+    public Object execute(Action action, Map<String, Object> jobContext, OrchestratorService orchestratorService, ClassLoader jobSpecificClassLoader, ActionExecutionLineage lineage, Map<String, Object> additionalSpelVariables) {
         com.ggar.orchid.model.SpelAction spelAction = (com.ggar.orchid.model.SpelAction) action;
         log.debug(i18n.getMessage("executor.spel.executing", spelAction.getExpression()));
-        return spelEvaluator.evaluate(spelAction.getExpression(), jobContext, null, jobSpecificClassLoader);
+        return spelEvaluator.evaluate(spelAction.getExpression(), jobContext, additionalSpelVariables, jobSpecificClassLoader);
     }
 }

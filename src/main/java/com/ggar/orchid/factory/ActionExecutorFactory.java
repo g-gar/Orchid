@@ -14,9 +14,9 @@ public class ActionExecutorFactory {
     private static final Logger log = LoggerFactory.getLogger(ActionExecutorFactory.class);
     private final ApplicationContext applicationContext;
     private final SpelExpressionEvaluator spelEvaluator;
-    private final I18nService i18n; 
+    private final I18nService i18n;
 
-    @Autowired 
+    @Autowired
     public ActionExecutorFactory(ApplicationContext applicationContext, SpelExpressionEvaluator spelEvaluator, I18nService i18n) {
         this.applicationContext = applicationContext;
         this.spelEvaluator = spelEvaluator;
@@ -26,6 +26,7 @@ public class ActionExecutorFactory {
     public ActionExecutor getExecutor(String type) {
         log.debug(i18n.getMessage("factory.gettingExecutor", type));
         switch (type) {
+            // Los constructores de ActionExecutor no cambian, pasan el I18nService como antes
             case "spel": return new SpelActionExecutor(spelEvaluator, i18n);
             case "loop": return new LoopActionExecutor(spelEvaluator, i18n);
             case "conditional": return new ConditionalActionExecutor(spelEvaluator, i18n);

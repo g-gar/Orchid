@@ -7,5 +7,5 @@ import com.ggar.orchid.service.OrchestratorService;
 import java.util.Map;
 
 public interface ActionExecutor {
-    Object execute(Action action, Map<String, Object> jobContext, OrchestratorService orchestratorService, ClassLoader jobSpecificClassLoader, ActionExecutionLineage lineage);
+    Object execute(Action action, Map<String, Object> jobContext, OrchestratorService orchestratorService, ClassLoader jobSpecificClassLoader, ActionExecutionLineage lineage, Map<String, Object> additionalSpelVariables);
 }
