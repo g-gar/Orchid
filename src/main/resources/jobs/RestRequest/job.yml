@@ -1,0 +1,24 @@
+id: "sampleRestRequestJob"
+name: "Sample REST Request Job"
+description: "A sample job that demonstrates the restRequest action to fetch a todo item."
+stages:
+  - name: "InvokeSampleApi"
+    type: "restRequest"
+    url: "https://jsonplaceholder.typicode.com/todos/1"
+    method: "GET"
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+    # body: "" # Not needed for GET
+    # mapToType: "com.ggar.orchid.model.dto.SampleTodoDTO" # Example DTO mapping, response will be String if not provided
+    returnToContextAs: "apiResponse"
+  
+  - name: "LogApiResponse"
+    type: "spel"
+    inputs:
+      expression: >
+        T(org.slf4j.LoggerFactory).getLogger('JobLogger').info(
+          'API Response Status: {}, Body: {}', 
+          context.get('apiResponse').get('statusCode'), 
+          context.get('apiResponse').get('responseBody')
+        )

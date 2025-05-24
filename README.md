@@ -26,6 +26,7 @@ This project aims to simplify the automation of sequential, conditional, and dat
         * Invoke methods on existing objects in the `jobContext`.
         * Invoke methods on Spring-managed beans.
         * Invoke methods on newly instantiated objects.
+    * `restRequest`: Executes RESTful HTTP requests. Supports GET, POST, PUT, DELETE. Allows setting URL, method, headers, and body. Can automatically map JSON responses to a specified DTO class using the `mapToType` input.
 * **Dynamic Job Context (`jobContext`):**
     * A `ConcurrentHashMap` shared across all actions within a single job execution.
     * Stores initial parameters, intermediate results, and final outputs.
@@ -175,6 +176,70 @@ Place in `jobs/{yourJobName}/lib/`.
 Run specific jobs from the command line:
 `java -jar orchid.jar --jobs=jobId1,anotherJobId`
 Use `--jobs=all` or omit `--jobs` to run all discovered jobs.
+
+---
+
+### 6. restRequest Action Examples
+
+The `restRequest` action allows you to make HTTP calls to external services.
+
+**Input Fields:**
+
+*   `url` (String, required): The URL of the HTTP endpoint.
+*   `method` (String, required): The HTTP method (e.g., "GET", "POST", "PUT", "DELETE").
+*   `headers` (Map<String, String>, optional): A map of HTTP headers. Values can be SpEL expressions.
+*   `body` (String, optional): The request body, typically used for "POST" and "PUT" requests. Can be a JSON string or any text. Values can be SpEL expressions.
+*   `mapToType` (String, optional): The fully qualified class name (FQCN) of a DTO. If provided, Orchid will attempt to deserialize the JSON response body into an instance of this class using Jackson. If deserialization fails or if not provided, the `responseBody` will be a String. The class must be available in the job's plugin `lib/` directory or the main application classpath.
+
+**Output Structure (stored via `returnToContextAs`):**
+
+The action returns a `Map<String, Object>` to the `jobContext` with the following keys:
+
+*   `statusCode` (Integer): The HTTP status code of the response.
+*   `responseBody` (Object): The body of the HTTP response. This will be a String by default, or an instance of the class specified by `mapToType` if deserialization is successful.
+
+**Example Scenarios:**
+
+```yaml
+id: "apiIntegrationJob"
+description: "A job demonstrating various restRequest action uses."
+stages:
+  - name: "InteractWithExternalApi"
+    actions:
+      - name: "FetchUserData"
+        type: "restRequest"
+        url: "https://api.example.com/users/123"
+        method: "GET"
+        headers:
+          Authorization: "Bearer #jobContext['apiToken']" # Example using jobContext
+        returnToContextAs: "userDataResponse" # Contains statusCode and responseBody (String)
+
+      - name: "CreateResource"
+        type: "restRequest"
+        url: "https://api.example.com/resources"
+        method: "POST"
+        headers:
+          Content-Type: "application/json"
+        body: "{ \"name\": \"New Resource\", \"value\": \"#jobContext['someValue']\" }" # Dynamic body
+        returnToContextAs: "creationResponse"
+
+      - name: "FetchAndMapDTO"
+        type: "restRequest"
+        url: "https://api.example.com/config/1"
+        method: "GET"
+        mapToType: "com.example.myapp.MyConfigDTO" # Assumes this DTO class exists
+        returnToContextAs: "mappedConfig" # responseBody will be MyConfigDTO instance or String on error
+      
+      - name: "LogResults" # Example of how to use the results
+        type: "spel"
+        expression: >
+          T(org.slf4j.LoggerFactory).getLogger('JobLogger').info(
+            'User Data Status: {}, User: {}. Config DTO: {}', 
+            #jobContext['userDataResponse']['statusCode'], 
+            #jobContext['userDataResponse']['responseBody'],
+            #jobContext['mappedConfig']['responseBody']
+          )
+```
 
 ---
 
