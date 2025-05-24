@@ -2,6 +2,7 @@ package com.ggar.orchid.factory;
 
 import com.ggar.orchid.evaluator.SpelExpressionEvaluator;
 import com.ggar.orchid.executor.*;
+import com.ggar.orchid.executor.actions.HttpRestActionExecutor;
 import com.ggar.orchid.service.I18nService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +33,7 @@ public class ActionExecutorFactory {
             case "conditional": return new ConditionalActionExecutor(spelEvaluator, i18n);
             case "command": return new CommandActionExecutor(spelEvaluator, i18n);
             case "javaMethod": return new JavaMethodActionExecutor(applicationContext, spelEvaluator, i18n);
+            case "restRequest": return new HttpRestActionExecutor();
             default:
                 log.error(i18n.getMessage("factory.unsupportedActionType", type));
                 throw new IllegalArgumentException(i18n.getMessage("factory.unsupportedActionType.runtime", type));
